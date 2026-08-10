@@ -1,6 +1,5 @@
 {
     "name": "zi/zing",
-    "version": "0.0.1",
     "description": "Blade-inspired PHP template engine \u2014 compile-to-PHP with cached output",
     "type": "library",
     "license": "MIT",
