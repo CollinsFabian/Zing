@@ -8,15 +8,8 @@ A Blade-inspired PHP template engine. Compiles `.zing` templates to plain PHP on
 
 ## Installation
 
-Not yet published to Packagist. Reference it as a local path or VCS repository from the consuming project's `composer.json`:
-
-```json
-"repositories": [
-    { "type": "vcs", "url": "https://github.com/CollinsFabian/Zing.git" }
-],
-"require": {
-    "zi/zing": "^0.0.1"
-}
+```bash
+composer require zi/zing
 ```
 
 ## Editor support
