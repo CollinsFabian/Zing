@@ -19,6 +19,10 @@ Not yet published to Packagist. Reference it as a local path or VCS repository f
 }
 ```
 
+## Editor support
+
+[Zing Template Syntax](https://marketplace.visualstudio.com/items?itemName=RexLLins.zing-syntax) is a VS Code extension providing syntax highlighting and snippets for `.zing` files. Install it from the Marketplace, or search "Zing Template Syntax" inside VS Code.
+
 ## Quick start
 
 ```php
