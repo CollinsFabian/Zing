@@ -1,4 +1,4 @@
-[![Tests](https://github.com/CollinsFabian/Zing/actions/workflow/tests.yml/badge.svg)](https://github.com/CollinsFabian/Zing/actions/workflow/tests.yml)
+[![Tests](https://github.com/CollinsFabian/Zing/actions/workflows/tests.yml/badge.svg)](https://github.com/CollinsFabian/Zing/actions/workflows/tests.yml)
 
 # zi/zing
 
