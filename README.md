@@ -1,3 +1,5 @@
+[![Tests](https://github.com/CollinsFabian/Zing/actions/workflow/tests.yml/badge.svg)](https://github.com/CollinsFabian/Zing/actions/workflow/tests.yml)
+
 # zi/zing
 
 A Blade-inspired PHP template engine. Compiles `.zing` templates to plain PHP once, caches the compiled output, and includes it on every subsequent render — no runtime AST walking, no per-request parsing overhead.

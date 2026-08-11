@@ -35,6 +35,7 @@ use Zing\Directives\UnlessDirective;
 use Zing\Directives\WhileDirective;
 use Zing\Directives\YieldDirective;
 use Zing\Exception\CompilationException;
+use Zing\Section\SectionStack;
 
 /**
  * Compile-to-PHP template engine.
@@ -77,7 +78,6 @@ final class Engine
     private function compile(string $source): string
     {
         $source = $this->verbatimCompiler->extract($source);
-        $source = $this->commentCompiler->strip($source);
         $source = $this->commentCompiler->strip($source);
         $source = $this->echoCompiler->compileRaw($source);
         $source = $this->echoCompiler->compileEscaped($source);

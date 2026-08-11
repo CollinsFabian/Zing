@@ -5,21 +5,41 @@ declare(strict_types=1);
 namespace Zing\Section;
 
 /**
- * Backing store for @extends / @section / @endsection / @yield.
+ * Backing store for @section / @endsection / @yield.
  *
- * Not wired up yet — layout inheritance needs the child template to
- * run first (populating sections), then the parent layout to run and
- * pull from what was captured. That two-pass control flow is the
- * trickiest part of the engine and deserves its own design pass once
- * @if/@foreach/echo are working end-to-end.
+ * One instance is shared across a full `render()` call tree — the child template populates it via `start()/end()`, the parent template (loaded via `@extends`) reads it back via `yield()`.
  *
- * Rough shape, for later:
- *   - startSection(string $name): starts an output buffer
- *   - endSection(): closes the buffer, stores content under the name
- *   - yieldSection(string $name, string $default = ''): returns stored content
- *   - extends(string $layout): marks which layout template wraps this one
+ * Engine is responsible for giving each *top-level* `render()` call a fresh instance so section content from a previous page never leaks into the next.
  */
 final class SectionStack
 {
-    // Intentionally empty for now.
+    /** @var array<string, string> */
+    private array $sections = [];
+
+    /** @var list<string> */
+    private array $openStack = [];
+
+    public function start(string $name): void
+    {
+        $this->openStack[] = $name;
+        ob_start();
+    }
+
+    public function end(): void
+    {
+        $name = array_pop($this->openStack);
+        if ($name === null) throw new \RuntimeException('@endsection with no matching @section.');
+
+        $this->sections[$name] = ob_get_clean();
+    }
+
+    public function yield(string $name, string $default = ''): string
+    {
+        return $this->sections[$name] ?? $default;
+    }
+
+    public function has(string $name): bool
+    {
+        return isset($this->sections[$name]);
+    }
 }
