@@ -48,22 +48,45 @@ use Zing\Section\SectionStack;
  */
 final class Engine
 {
+    private int $flags;
     /** @var array<string, DirectiveCompiler> */
     private array $compilers = [];
-    private ?SectionStack $sectionStack = null;
     private array $extendsStack = [];
     private int $renderDepth = 0;
+    private const EXTENSION = ".zing";
 
-    private EchoCompiler $echoCompiler;
     private CommentCompiler $commentCompiler;
+    private EchoCompiler $echoCompiler;
+    private ?SectionStack $sectionStack = null;
+    private TemplateCache $cache;
     private VerbatimCompiler $verbatimCompiler;
 
-    public function __construct(private readonly string $viewPath, private readonly string $cachePath, private readonly string $extension = '.zing',)
-    {
+    public function __construct(
+        private readonly string $viewPath,
+        private readonly string $cachePath,
+        int $flags = Flags::NONE
+    ) {
+        $this->flags = $flags;
         $this->echoCompiler = new EchoCompiler();
         $this->commentCompiler = new CommentCompiler();
         $this->verbatimCompiler = new VerbatimCompiler();
+        $this->cache = new TemplateCache($this->cachePath, $this->flags);
         $this->registerDefaults();
+    }
+
+    public function hasFlag(int $flag): bool
+    {
+        return ($this->flags & $flag) === $flag;
+    }
+
+    public function enable(int $flag): void
+    {
+        $this->flags |= $flag;
+    }
+
+    public function disable(int $flag): void
+    {
+        $this->flags &= ~$flag;
     }
 
     /**
@@ -251,11 +274,10 @@ final class Engine
 
             if (!is_file($sourcePath)) throw CompilationException::templateNotFound($template, $sourcePath);
 
-            $compiledPath = $this->getCompiledPath($template);
-            if ($this->needsRecompile($sourcePath, $compiledPath)) {
-                $compiled = $this->compile(file_get_contents($sourcePath));
-                $this->writeCompiled($compiledPath, $compiled);
-            }
+            $compiledPath = $this->cache->getCompiledPath(
+                $sourcePath,
+                fn(string $source) => $this->compile($source)
+            );
 
             return $this->evaluate($compiledPath, $data);
         } finally {
@@ -263,32 +285,11 @@ final class Engine
         }
     }
 
-    private function needsRecompile(string $sourcePath, string $compiledPath): bool
-    {
-        if (!is_file($compiledPath)) return true;
-        return filemtime($sourcePath) > filemtime($compiledPath);
-    }
-
-    private function writeCompiled(string $compiledPath, string $compiled): void
-    {
-        $dir = dirname($compiledPath);
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
-
-        file_put_contents($compiledPath, $compiled);
-    }
-
     private function resolvePath(string $template): string
     {
-        $relative = str_replace('.', DIRECTORY_SEPARATOR, $template) . $this->extension;
+        $relative = str_replace('.', DIRECTORY_SEPARATOR, $template) . self::EXTENSION;
 
         return rtrim($this->viewPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $relative;
-    }
-
-    private function getCompiledPath(string $template): string
-    {
-        $hash = md5($template);
-
-        return rtrim($this->cachePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $hash . '.php';
     }
 
     private function registerDefaults(): void

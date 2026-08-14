@@ -72,9 +72,45 @@ Directives with no branching logic (`@endif`, `@endforeach`, `@else`, ...) don't
 - Skips over `'...'`/`"..."` string literals (respecting `\'`/`\\` escapes), so a `)` inside a quoted argument doesn't miscount as closing the directive.
 - Guards `@` against matching inside things like email addresses — a directive only starts if a letter or underscore immediately follows `@`.
 
-### Compiled output caching
+### Compiled output caching (TemplateCache)
 
-Compiled `.php` files are written to `cachePath`, named by an md5 hash of the template's dot-notation name. Recompilation only happens when the source file's mtime is newer than the compiled file's — editing a `.zing` file invalidates its cache automatically; untouched templates are never recompiled.
+Caching is handled by a dedicated `Zing\TemplateCache` class rather than being inline in `Engine`. It provides:
+
+- **Atomic writes** — compiled output is written to a temp file and `rename()`d into place, so a request reading the compiled path never sees a partially-written file, even under concurrent access.
+- **Stale-on-error fallback** — if recompilation throws (a template syntax error, for example), the last successfully compiled version is served instead of taking the page down, provided one exists.
+- **Manual invalidation** — `forget(string $sourcePath)` clears one template's cached output; `clear()` wipes the entire cache directory.
+
+```php
+use Zing\TemplateCache;
+
+$cache = new TemplateCache($cachePath);
+$cache->forget('/path/to/pages/settings.zing'); // force recompile on next render
+$cache->clear(); // wipe everything
+```
+
+### Flags
+
+`Zing\Flags` is a set of bitmask constants controlling `Engine`/`TemplateCache` behavior — combine them with `|`:
+
+```php
+use Zing\Engine;
+use Zing\Flags;
+
+$engine = new Engine($viewPath, $cachePath, flags: Flags::STRICT_MODE | Flags::LOG_ERRORS);
+
+// or toggle at runtime:
+$engine->enable(Flags::NO_CACHE);
+$engine->disable(Flags::NO_CACHE);
+```
+
+| Flag                 | Effect                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------- |
+| `Flags::LOG_ERRORS`  | Logs compile failures via `error_log()`.                                              |
+| `Flags::STRICT_MODE` | Throws on compile failure instead of falling back to stale cached output.             |
+| `Flags::NO_CACHE`    | Always recompiles, bypassing the cache validity check — useful for local development. |
+| `Flags::DEBUG`       | Reserved.                                                                             |
+
+`Engine` and `TemplateCache` share the same underlying flags value via a PHP reference (`int &$flags`), so calling `$engine->enable(...)`/`disable(...)` is immediately visible to the cache layer with no manual sync step.
 
 ## Syntax reference
 
@@ -253,26 +289,26 @@ Note this runs through the echo/comment passes like any other template text — 
 
 ## Directive registry (built-in)
 
-| Directive                                                        | Closes with  | Notes
-| :--------                                                        | :--------    | :--------
-`@if` / `@elseif` / `@else`                                        | `@endif`
-`@unless`                                                          | `@endunless` | inverse of `@if`
-`@isset`                                                           | `@endisset`
-`@empty`                                                           | `@endempty`
-`@once`                                                            | `@endonce`   | keyed by compiled line number
-`@foreach`                                                         | `@endforeach`
-`@for`                                                             | `@endfor`
-`@while`                                                           | `@endwhile`
-`@switch` / `@case` / `@default`                                   | `@endswitch` | pair `@case` with `@break`
-`@break` / `@continue`                                             | —            | optional condition argument
-`@php`                                                             | `@endphp`    | raw PHP passthrough
-`@include`                                                         | —            | `Engine::render()` re-entry
-`@extends`                                                         | —            | defers to parent template
-`@section`                                                         | `@endsection`
-`@yield`                                                           | —            | reads from `SectionStack`
-`@class` / `@style`                                                | —            | conditional attribute values
-`@checked` / `@selected` / `@disabled` / `@readonly` / `@required` | —            |boolean HTML attributes
-`@attributes`                                                      | —            | spreads an associative array
+| Directive                                                          | Closes with   | Notes                         |
+| :----------------------------------------------------------------- | :------------ | :---------------------------- |
+| `@if` / `@elseif` / `@else`                                        | `@endif`      |
+| `@unless`                                                          | `@endunless`  | inverse of `@if`              |
+| `@isset`                                                           | `@endisset`   |
+| `@empty`                                                           | `@endempty`   |
+| `@once`                                                            | `@endonce`    | keyed by compiled line number |
+| `@foreach`                                                         | `@endforeach` |
+| `@for`                                                             | `@endfor`     |
+| `@while`                                                           | `@endwhile`   |
+| `@switch` / `@case` / `@default`                                   | `@endswitch`  | pair `@case` with `@break`    |
+| `@break` / `@continue`                                             | —             | optional condition argument   |
+| `@php`                                                             | `@endphp`     | raw PHP passthrough           |
+| `@include`                                                         | —             | `Engine::render()` re-entry   |
+| `@extends`                                                         | —             | defers to parent template     |
+| `@section`                                                         | `@endsection` |
+| `@yield`                                                           | —             | reads from `SectionStack`     |
+| `@class` / `@style`                                                | —             | conditional attribute values  |
+| `@checked` / `@selected` / `@disabled` / `@readonly` / `@required` | —             | boolean HTML attributes       |
+| `@attributes`                                                      | —             | spreads an associative array  |
 ---
 
 ### Extending
@@ -295,8 +331,9 @@ interface DirectiveCompiler
 `$expression` is the raw text between the directive's parentheses (already balanced and string-literal-safe, per the paren-depth scanner) — return the PHP that should replace `@directive(...)` in the compiled output.
 
 ## Not yet implemented
-`$loop` variable inside `@foreach` (index, first, last, count, remaining) — flagged as a bigger quality-of-life addition, requires wrapping the compiled loop body rather than a single directive.
-Comma-splitting/argument-array parsing beyond what PHP's own parser handles at compile time — `@include`'s second argument works because it's spliced as raw PHP, not because Zing parses it itself.
+- `$loop` variable inside `@foreach` (index, first, last, count, remaining) — flagged as a bigger quality-of-life addition, requires wrapping the compiled loop body rather than a single directive.
+- `Flags::DEBUG` — not yet wired to any behavior.
+- Comma-splitting/argument-array parsing beyond what PHP's own parser handles at compile time — `@include`'s second argument works because it's spliced as raw PHP, not because Zing parses it itself.
 
 ## Testing
 

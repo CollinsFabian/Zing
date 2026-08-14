@@ -6,6 +6,7 @@ namespace Zing\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Zing\Engine;
+use Zing\Flags;
 
 final class EngineTest extends TestCase
 {
@@ -138,5 +139,30 @@ final class EngineTest extends TestCase
 
         $engine = new Engine($this->viewPath, $this->cachePath);
         $this->assertSame('matched', $engine->render('paren-string', ['label' => 'closing)paren']));
+    }
+
+    public function testEnableNoCacheForcesRecompileOnEveryRender(): void
+    {
+        file_put_contents($this->viewPath . '/counting.zing', '{{ $value }}');
+
+        $engine = new Engine($this->viewPath, $this->cachePath);
+        $engine->enable(Flags::NO_CACHE);
+
+        $first = $engine->render('counting', ['value' => 'a']);
+        $this->assertSame('a', $first);
+
+        // Overwrite the compiled output on disk to prove it gets clobbered again,
+        // i.e. that NO_CACHE is actually forcing a fresh compile+write, not reusing it.
+        $compiledFiles = glob($this->cachePath . '/*.php');
+        $this->assertNotEmpty($compiledFiles, 'Expected a compiled file to exist.');
+
+        $mtimeBefore = filemtime($compiledFiles[0]);
+        sleep(1); // ensure a detectable mtime difference
+
+        $engine->render('counting', ['value' => 'b']);
+        clearstatcache(true, $compiledFiles[0]);
+        $mtimeAfter = filemtime($compiledFiles[0]);
+
+        $this->assertGreaterThan($mtimeBefore, $mtimeAfter, 'NO_CACHE should rewrite the compiled file on every render.');
     }
 }
